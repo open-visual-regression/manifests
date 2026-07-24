@@ -1,0 +1,47 @@
+{{- if .Values.worker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ovr.fullname" . }}-worker
+  labels:
+    {{- include "ovr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ovr.selectorLabels" (dict "Release" .Release "Chart" .Chart "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ovr.selectorLabels" (dict "Release" .Release "Chart" .Chart "component" "worker") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: worker
+          image: {{ include "ovr.image" (dict "Values" .Values "name" "worker") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ovr.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ovr.secretName" . }}
+          env:
+            - name: OVR_CAPTURE_GROUP_CONCURRENCY
+              value: {{ .Values.worker.concurrency | quote }}
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.worker.shmSize }}
+{{- end }}

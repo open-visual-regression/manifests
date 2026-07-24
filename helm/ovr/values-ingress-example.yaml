@@ -1,0 +1,10 @@
+web:
+  ingress:
+    enabled: true
+    className: nginx
+    host: openvisualregression.com
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+    tls:
+      - hosts: [openvisualregression.com]
+        secretName: ovr-tls

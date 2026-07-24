@@ -1,0 +1,71 @@
+# Requires an external Postgres, Redis, and S3-compatible bucket already
+# reachable from the cluster (e.g. Vultr Managed Databases + Vultr Object
+# Storage). This chart does not run any databases itself.
+
+image:
+  registry: ghcr.io/open-visual-regression
+  tag: main
+  # Pin an exact digest (sha256:...). Takes precedence over tag when set —
+  # deploy exactly what you tested, and roll pods only when it changes.
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Name of a Secret you create yourself with keys: DATABASE_URL, REDIS_URL,
+# BETTER_AUTH_SECRET, OVR_GIT_TOKEN_ENCRYPTION_KEY, STORAGE_ACCESS_KEY,
+# STORAGE_SECRET_KEY. Set this to use your own secret instead of the values
+# below (recommended if using GitOps / Sealed Secrets / External Secrets).
+existingSecret: ""
+
+env:
+  # Public URL the app will be served at.
+  baseUrl: "https://ovr.example.com"
+  logLevel: info
+
+auth:
+  # Generate: openssl rand -base64 32
+  betterAuthSecret: ""
+  # Generate: openssl rand -base64 32
+  gitTokenEncryptionKey: ""
+
+database:
+  url: "postgresql://user:pass@host:5432/open_visual_regression"
+
+redis:
+  url: "redis://host:6379"
+
+storage:
+  endpoint: "https://s3.example.com"
+  publicEndpoint: "https://s3.example.com"
+  region: us-east-1
+  bucket: ovr
+  forcePathStyle: true
+  accessKey: ""
+  secretKey: ""
+
+web:
+  enabled: true
+  replicas: 1
+  port: 3000
+  resources: {}
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: false
+    className: ""
+    host: ovr.example.com
+    annotations: {}
+    tls: []
+
+worker:
+  enabled: true
+  replicas: 1
+  concurrency: 2
+  resources: {}
+  # Chromium needs real /dev/shm; the k8s default (64Mi) crashes on non-trivial
+  # pages. Mounted as an in-memory emptyDir.
+  shmSize: 1Gi
+
+migrate:
+  enabled: true

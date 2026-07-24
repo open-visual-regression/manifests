@@ -1,0 +1,54 @@
+{{- if .Values.web.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ovr.fullname" . }}-web
+  labels:
+    {{- include "ovr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ovr.selectorLabels" (dict "Release" .Release "Chart" .Chart "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ovr.selectorLabels" (dict "Release" .Release "Chart" .Chart "component" "web") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: web
+          image: {{ include "ovr.image" (dict "Values" .Values "name" "web") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ovr.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ovr.secretName" . }}
+          env:
+            - name: PORT
+              value: {{ .Values.web.port | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.web.port }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+{{- end }}
