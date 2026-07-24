@@ -1,0 +1,25 @@
+# App-of-apps: apply this once on the cluster running ArgoCD itself
+# (kubectl apply -f argocd/root.yaml). It creates/syncs everything in
+# argocd/apps/ — nothing else there needs to be applied by hand.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ovr-root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/open-visual-regression/manifests.git
+    targetRevision: main
+    path: argocd/apps
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

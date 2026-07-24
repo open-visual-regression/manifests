@@ -1,0 +1,41 @@
+# cert-manager provides the ClusterIssuer CRD used by cluster-issuer.yaml to
+# get Let's Encrypt certs via Traefik's http01 solver.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ovr-cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: v1.21.0
+    helm:
+      values: |
+        crds:
+          enabled: true
+        resources:
+          requests: { cpu: 10m, memory: 24Mi }
+          limits: { memory: 96Mi }
+        webhook:
+          resources:
+            requests: { cpu: 10m, memory: 24Mi }
+            limits: { memory: 96Mi }
+        cainjector:
+          resources:
+            requests: { cpu: 10m, memory: 24Mi }
+            limits: { memory: 96Mi }
+  destination:
+    name: vultr
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # cert-manager's CRDs exceed the client-side apply annotation size limit.
+      - ServerSideApply=true
+      - CreateNamespace=true

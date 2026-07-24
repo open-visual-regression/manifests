@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ovr-cluster-issuer
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/open-visual-regression/manifests.git
+    targetRevision: main
+    path: "."
+    directory:
+      recurse: false
+      include: "cluster-issuer.yaml"
+  destination:
+    name: vultr
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

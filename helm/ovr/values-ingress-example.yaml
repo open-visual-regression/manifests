@@ -1,7 +1,7 @@
 web:
   ingress:
     enabled: true
-    className: nginx
+    className: traefik
     host: openvisualregression.com
     annotations:
       cert-manager.io/cluster-issuer: letsencrypt

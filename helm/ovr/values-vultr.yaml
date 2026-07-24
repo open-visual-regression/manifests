@@ -1,0 +1,58 @@
+# existingSecret supplies DATABASE_URL, REDIS_URL, BETTER_AUTH_SECRET,
+# OVR_GIT_TOKEN_ENCRYPTION_KEY, STORAGE_ACCESS_KEY, STORAGE_SECRET_KEY.
+# Created out-of-band by scripts/create-secrets.sh — never commit it.
+existingSecret: ovr-secrets
+
+image:
+  tag: main
+  # main is a moving tag; IfNotPresent would never repull it.
+  pullPolicy: Always
+
+env:
+  baseUrl: "https://openvisualregression.com"
+
+database:
+  url: "" # unused, see existingSecret
+
+redis:
+  url: "" # unused, see existingSecret
+
+storage:
+  # empty endpoint/publicEndpoint + forcePathStyle: false = real AWS S3
+  endpoint: ""
+  publicEndpoint: ""
+  region: us-east-1 # match the bucket's region
+  bucket: ovr
+  forcePathStyle: false
+  # accessKey/secretKey unused, see existingSecret
+
+# Sized for a 1 vCPU / 2GB node, which leaves ~647Mi schedulable after k3s
+# and its system pods. See README.md "Resource budget is tight" before
+# raising anything here.
+web:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 224Mi }
+  ingress:
+    enabled: true
+    className: traefik
+    host: openvisualregression.com
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+    tls:
+      - hosts: [openvisualregression.com]
+        secretName: ovr-tls
+
+worker:
+  replicas: 1
+  # Headless Chromium is the biggest memory consumer here; keep concurrency low.
+  concurrency: 1
+  resources:
+    requests: { cpu: 300m, memory: 320Mi }
+    limits: { memory: 512Mi }
+  # Counts against the container's memory limit, so keep it modest.
+  shmSize: 256Mi
+
+migrate:
+  enabled: true

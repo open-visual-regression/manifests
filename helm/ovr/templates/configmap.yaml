@@ -7,8 +7,12 @@ metadata:
 data:
   BASE_URL: {{ .Values.env.baseUrl | quote }}
   LOG_LEVEL: {{ .Values.env.logLevel | quote }}
-  STORAGE_ENDPOINT: {{ .Values.storage.endpoint | quote }}
-  STORAGE_PUBLIC_ENDPOINT: {{ .Values.storage.publicEndpoint | quote }}
+  {{- with .Values.storage.endpoint }}
+  STORAGE_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.storage.publicEndpoint }}
+  STORAGE_PUBLIC_ENDPOINT: {{ . | quote }}
+  {{- end }}
   STORAGE_REGION: {{ .Values.storage.region | quote }}
   STORAGE_BUCKET: {{ .Values.storage.bucket | quote }}
   STORAGE_FORCE_PATH_STYLE: {{ .Values.storage.forcePathStyle | quote }}
