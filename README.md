@@ -242,7 +242,13 @@ sync — is what actually fetches a new build:
 kubectl --context vultr -n ovr rollout restart deployment/ovr-app-web deployment/ovr-app-worker
 ```
 
-This is a manual step by design — no image-watching automation runs on the
+The chart deploys with `strategy.type: Recreate`, so this restart costs a
+few seconds of downtime rather than running old and new pods side by side —
+the right trade on a small instance with little memory to spare. If you're
+running with real headroom to spare, switch to `RollingUpdate` for zero
+downtime.
+
+This restart is a manual step by design — no image-watching automation runs on the
 node to keep the RAM budget clear. If you want new merges deployed
 automatically, look at Argo CD Image Updater (it would run alongside ArgoCD
 on your local cluster, not on the Vultr node, so it wouldn't compete for the

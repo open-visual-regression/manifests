@@ -8,6 +8,9 @@ metadata:
     app.kubernetes.io/component: worker
 spec:
   replicas: {{ .Values.worker.replicas }}
+  # Recreate avoids briefly needing 2x memory during a rollout - safer on small instances.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "ovr.selectorLabels" (dict "Release" .Release "Chart" .Chart "component" "worker") | nindent 6 }}
