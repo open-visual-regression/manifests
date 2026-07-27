@@ -27,7 +27,7 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: worker
-          image: {{ include "ovr.image" (dict "Values" .Values "name" "worker") }}
+          image: {{ include "ovr.image" (dict "Values" .Values "name" "worker" "tag" .Values.worker.image.tag "digest" .Values.worker.image.digest) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           envFrom:
             - configMapRef:

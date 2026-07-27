@@ -24,7 +24,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: migrate
-          image: {{ include "ovr.image" (dict "Values" .Values "name" "worker") }}
+          image: {{ include "ovr.image" (dict "Values" .Values "name" "worker" "tag" .Values.worker.image.tag "digest" .Values.worker.image.digest) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["node", "dist/migrate.js"]
           # Only DATABASE_URL is needed (OVR_MIGRATIONS_DIR is baked into the
