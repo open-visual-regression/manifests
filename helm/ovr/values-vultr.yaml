@@ -22,7 +22,7 @@ storage:
   endpoint: ""
   publicEndpoint: ""
   region: us-east-1 # match the bucket's region
-  bucket: ovr
+  bucket: open-visual-regression
   forcePathStyle: false
   # accessKey/secretKey unused, see existingSecret
 
