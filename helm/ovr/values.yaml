@@ -17,6 +17,14 @@ imagePullSecrets: []
 # below (recommended if using GitOps / Sealed Secrets / External Secrets).
 existingSecret: ""
 
+# The images set USER by name (nextjs / pwuser), which the kubelet cannot
+# verify against runAsNonRoot — it needs a numeric UID. Both resolve to 1001,
+# matching the UID/GID build args in the app's Dockerfiles.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+
 env:
   # Public URL the app will be served at.
   baseUrl: "https://ovr.example.com"

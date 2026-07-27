@@ -48,8 +48,11 @@ worker:
   replicas: 1
   # Headless Chromium is the biggest memory consumer here; keep concurrency low.
   concurrency: 1
+  # The request is kept below actual usage to leave ~64Mi free for
+  # cert-manager's ACME solver pod, which is scheduled only during certificate
+  # issuance and renewal. The limit is what the worker actually gets to use.
   resources:
-    requests: { cpu: 300m, memory: 320Mi }
+    requests: { cpu: 300m, memory: 256Mi }
     limits: { memory: 512Mi }
   # Counts against the container's memory limit, so keep it modest.
   shmSize: 256Mi

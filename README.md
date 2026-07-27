@@ -47,8 +47,13 @@ not decoration:
 | cert-manager (3 pods) | 72Mi | 288Mi |
 | Valkey | 64Mi | 128Mi |
 | web | 128Mi | 224Mi |
-| worker (headless Chromium) | 320Mi | 512Mi |
-| **total** | **584Mi** | **1152Mi** |
+| worker (headless Chromium) | 256Mi | 512Mi |
+| **total** | **520Mi** | **1152Mi** |
+
+cert-manager also schedules a 64Mi ACME solver pod during certificate
+issuance and renewal. The worker's request is held below its real usage to
+keep that much free — without the headroom the solver cannot schedule and
+certificates silently fail to renew.
 
 After k3s's own system pods (CoreDNS, Traefik, metrics-server, local-path)
 take ~140Mi, that leaves ~647Mi of schedulable memory against 584Mi of
