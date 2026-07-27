@@ -19,15 +19,15 @@ spec:
           enabled: true
         resources:
           requests: { cpu: 10m, memory: 24Mi }
-          limits: { memory: 96Mi }
+          limits: { cpu: 100m, memory: 96Mi }
         webhook:
           resources:
             requests: { cpu: 10m, memory: 24Mi }
-            limits: { memory: 96Mi }
+            limits: { cpu: 100m, memory: 96Mi }
         cainjector:
           resources:
             requests: { cpu: 10m, memory: 24Mi }
-            limits: { memory: 96Mi }
+            limits: { cpu: 100m, memory: 96Mi }
   destination:
     name: vultr
     namespace: cert-manager

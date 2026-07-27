@@ -29,11 +29,14 @@ storage:
 # Sized for a 1 vCPU / 2GB node, which leaves ~647Mi schedulable after k3s
 # and its system pods. See README.md "Resource budget is tight" before
 # raising anything here.
+#
+# CPU limits keep capture load from saturating the single core and starving
+# kubelet, CoreDNS and the API server.
 web:
   replicas: 1
   resources:
     requests: { cpu: 50m, memory: 128Mi }
-    limits: { memory: 224Mi }
+    limits: { cpu: 300m, memory: 224Mi }
   ingress:
     enabled: true
     className: traefik
@@ -48,12 +51,14 @@ worker:
   replicas: 1
   # Headless Chromium is the biggest memory consumer here; keep concurrency low.
   concurrency: 1
-  # The request is kept below actual usage to leave ~64Mi free for
-  # cert-manager's ACME solver pod, which is scheduled only during certificate
-  # issuance and renewal. The limit is what the worker actually gets to use.
+  # Snapshots per group, at 2 minutes each: caps a stuck group at ~8 minutes.
+  groupSize: 4
+  # The memory request sits below real usage to leave ~64Mi for cert-manager's
+  # ACME solver, which is only scheduled during certificate issuance. The CPU
+  # limit reserves ~500m of the core for k3s and everything else.
   resources:
     requests: { cpu: 300m, memory: 256Mi }
-    limits: { memory: 512Mi }
+    limits: { cpu: 500m, memory: 512Mi }
   # Counts against the container's memory limit, so keep it modest.
   shmSize: 256Mi
 
