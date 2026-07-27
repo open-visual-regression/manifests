@@ -65,6 +65,9 @@ web:
     host: ovr.example.com
     annotations: {}
     tls: []
+    # Redirect plain HTTP to HTTPS when tls is set. Supported for className
+    # traefik and nginx; other controllers need their own redirect config.
+    redirectHttps: true
 
 worker:
   enabled: true
