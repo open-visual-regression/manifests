@@ -1,6 +1,6 @@
-# Requires an external Postgres, Redis, and S3-compatible bucket already
-# reachable from the cluster (e.g. Vultr Managed Databases + Vultr Object
-# Storage). This chart does not run any databases itself.
+# Requires a Postgres database, a Redis-compatible instance, and an
+# S3-compatible bucket already reachable from the cluster. This chart runs none
+# of them — use managed services (Neon, RDS, AWS S3, R2) or deploy your own.
 
 image:
   registry: ghcr.io/open-visual-regression
@@ -37,17 +37,19 @@ auth:
   gitTokenEncryptionKey: ""
 
 database:
-  url: "postgresql://user:pass@host:5432/open_visual_regression"
+  url: "" # postgresql://user:pass@host:5432/open_visual_regression
 
 redis:
-  url: "redis://host:6379"
+  url: "" # redis://host:6379
 
 storage:
-  endpoint: "https://s3.example.com"
-  publicEndpoint: "https://s3.example.com"
+  # Leave endpoint/publicEndpoint empty and forcePathStyle false for AWS S3.
+  # Set them (and forcePathStyle true) for MinIO, rustfs, R2, etc.
+  endpoint: ""
+  publicEndpoint: ""
   region: us-east-1
   bucket: ovr
-  forcePathStyle: true
+  forcePathStyle: false
   accessKey: ""
   secretKey: ""
 
