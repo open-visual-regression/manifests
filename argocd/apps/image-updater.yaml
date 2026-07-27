@@ -1,8 +1,3 @@
-# Watches ghcr.io/open-visual-regression/{web,worker}:main for new digests and
-# patches the ovr-app Application's Helm parameters directly (writeBackConfig
-# method "argocd") - no git commits, no credentials beyond read access to a
-# public registry. Runs on the local cluster alongside ArgoCD itself, since
-# the controller must live wherever the Application resources it manages do.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -40,12 +35,12 @@ spec:
                       imageName: ghcr.io/open-visual-regression/web:main
                       manifestTargets:
                         helm:
-                          tag: "web.image.digest"
+                          spec: "web.image.override"
                     - alias: worker
                       imageName: ghcr.io/open-visual-regression/worker:main
                       manifestTargets:
                         helm:
-                          tag: "worker.image.digest"
+                          spec: "worker.image.override"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

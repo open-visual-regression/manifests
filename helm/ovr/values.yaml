@@ -56,11 +56,10 @@ web:
   replicas: 1
   port: 3000
   resources: {}
-  # Overrides image.tag/image.digest for this component only. Needed because
-  # web and worker are different images and can't share one digest.
   image:
     tag: ""
     digest: ""
+    override: "" # full image reference; takes precedence over tag/digest above
   service:
     type: ClusterIP
     port: 3000
@@ -79,10 +78,10 @@ worker:
   replicas: 1
   concurrency: 2
   resources: {}
-  # See web.image above.
   image:
     tag: ""
     digest: ""
+    override: ""
   # Chromium needs real /dev/shm; the k8s default (64Mi) crashes on non-trivial
   # pages. Mounted as an in-memory emptyDir.
   shmSize: 1Gi
