@@ -26,17 +26,15 @@ storage:
   forcePathStyle: false
   # accessKey/secretKey unused, see existingSecret
 
-# Sized for a 1 vCPU / 2GB node, which leaves ~647Mi schedulable after k3s
-# and its system pods. See README.md "Resource budget is tight" before
-# raising anything here.
-#
-# CPU limits keep capture load from saturating the single core and starving
-# kubelet, CoreDNS and the API server.
+# Two nodes: the 2GB control-plane node "vultr" runs web, valkey and all the
+# system pods; the 1GB node "vultr-worker" runs only the capture worker, which
+# is pinned there (nodeSelector + toleration below). See README.md "Resource
+# budget is tight" before raising anything.
 web:
   replicas: 1
   resources:
-    requests: { cpu: 50m, memory: 128Mi }
-    limits: { cpu: 300m, memory: 224Mi }
+    requests: { cpu: 100m, memory: 160Mi }
+    limits: { cpu: 500m, memory: 320Mi }
   ingress:
     enabled: true
     className: traefik
@@ -53,12 +51,20 @@ worker:
   concurrency: 1
   # Snapshots per group, at 2 minutes each: caps a stuck group at ~8 minutes.
   groupSize: 4
-  # The memory request sits below real usage to leave ~64Mi for cert-manager's
-  # ACME solver, which is only scheduled during certificate issuance. The CPU
-  # limit reserves ~500m of the core for k3s and everything else.
+  # Pinned to the dedicated 1GB node, whose taint keeps everything else off it,
+  # so capture load stays isolated from the API server, CoreDNS and ingress.
+  nodeSelector:
+    ovr.io/role: worker
+  tolerations:
+    - key: ovr.io/dedicated
+      operator: Equal
+      value: worker
+      effect: NoSchedule
+  # The node reserves 350Mi for k3s itself, leaving ~600Mi allocatable. The CPU
+  # limit still leaves ~150m for the node's own kubelet under full capture load.
   resources:
-    requests: { cpu: 300m, memory: 256Mi }
-    limits: { cpu: 500m, memory: 512Mi }
+    requests: { cpu: 300m, memory: 400Mi }
+    limits: { cpu: 850m, memory: 550Mi }
   # Counts against the container's memory limit, so keep it modest.
   shmSize: 256Mi
 

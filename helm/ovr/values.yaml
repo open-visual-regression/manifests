@@ -58,6 +58,9 @@ web:
   replicas: 1
   port: 3000
   resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   image:
     tag: ""
     digest: ""
@@ -84,6 +87,9 @@ worker:
   # before its timeout fires. Empty uses the app default (10).
   groupSize: ""
   resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   image:
     tag: ""
     digest: ""
