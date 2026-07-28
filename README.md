@@ -1,20 +1,24 @@
 # OVR on Vultr
 
 Deploys [open-visual-regression](https://github.com/open-visual-regression/open-visual-regression)
-to a single 1 vCPU / 2GB Vultr instance, managed by ArgoCD running on a
-separate local k3s cluster. This repo is the GitOps source of truth for that
-deployment and doubles as a worked example of deploying OVR outside Docker
-Compose.
+to two Vultr instances, managed by ArgoCD running on a separate local k3s
+cluster. This repo is the GitOps source of truth for that deployment and
+doubles as a worked example of deploying OVR outside Docker Compose.
 
 ## Architecture
 
 - **ArgoCD control plane**: your existing local k3s install. It is not
-  installed on the Vultr node — that would burn ~500MB-1GB of the node's 2GB
+  installed on either Vultr node — that would burn several hundred MB of RAM
   on ArgoCD's own pods (server, repo-server, redis, app-controller, dex) for
   no benefit here.
-- **Vultr node** ("vultr" cluster, registered with the local ArgoCD): runs
-  Traefik (bundled with k3s), cert-manager, Valkey, and the OVR web/worker
-  pods.
+- **Vultr control-plane node** ("vultr" in the local ArgoCD, a 2GB instance):
+  runs k3s's own control plane (etcd/apiserver/scheduler), Traefik (bundled
+  with k3s), cert-manager, Valkey, and the OVR **web** pod.
+- **Vultr worker node** ("vultr-worker", a 1GB instance joined to the same
+  cluster as a k3s agent): runs only the OVR **worker** pod. It's tainted so
+  nothing else can schedule there — headless Chromium is the heaviest,
+  spikiest consumer in this stack, and isolating it keeps a busy capture run
+  from starving the API server, CoreDNS, or ingress.
 - **Database**: Neon (managed Postgres), not in-cluster.
 - **Object storage**: AWS S3 (a real bucket + IAM user), not an in-cluster
   S3-compatible service.
@@ -28,72 +32,101 @@ the OVR chart, in that sync-wave order).
 
 ## ⚠️ Resource budget is tight
 
-On an idle 2GB node, k3s and the OS hold ~825Mi of the 1637Mi available,
-leaving **~810Mi** for the application stack. The k3s server process alone
-accounts for ~666Mi — running your own control plane is the cost of a
-self-managed single node.
+Each node has its own budget; they are no longer shared.
 
-Kubernetes does not know this by default. Out of the box k3s sets no
-`--system-reserved`, so the scheduler reports the full 1637Mi as allocatable
-and will cheerfully admit pods the node cannot actually feed — the kernel
-OOM killer then picks the victim. The install in step 4 reserves 750Mi,
-which brings reported allocatable down to a truthful ~787Mi.
+### Control-plane node (2GB)
 
-Within that, the requests and limits in `values-vultr.yaml` are load-bearing,
-not decoration:
+k3s's own control-plane processes and the OS hold ~825Mi of the 1637Mi
+available, leaving a **truthful ~787Mi** allocatable (the install in step 4
+sets `system-reserved` so the scheduler doesn't overcommit this — see below).
 
 | Component | Request | Limit |
 |---|---|---|
 | cert-manager (3 pods) | 72Mi | 288Mi |
+| CoreDNS | 70Mi | 170Mi |
 | Valkey | 64Mi | 128Mi |
-| web | 128Mi | 224Mi |
-| worker (headless Chromium) | 256Mi | 512Mi |
-| **total** | **520Mi** | **1152Mi** |
+| web | 160Mi | 320Mi |
+| **total** | **~366Mi** | **~906Mi** |
 
-cert-manager also schedules a 64Mi ACME solver pod during certificate
-issuance and renewal. The worker's request is held below its real usage to
-keep that much free — without the headroom the solver cannot schedule and
-certificates silently fail to renew.
+That leaves comfortable headroom against the 787Mi allocatable — this node no
+longer hosts the worker, so it's far less contested than a single-node setup
+would be. cert-manager also schedules a short-lived ACME solver pod during
+certificate issuance/renewal; the headroom here easily covers it.
 
-After k3s's own system pods (CoreDNS, Traefik, metrics-server, local-path)
-take ~140Mi, that leaves ~647Mi of schedulable memory against 584Mi of
-requests — it fits, with little room to add anything else. Limits
-deliberately overcommit, since all four peaking at once is not a real
-scenario. The node has a 5.3GB swapfile, so pressure degrades to slowness
-rather than a hard OOM — but Chromium on swap is genuinely slow, so treat
-sustained swapping as the signal to resize rather than something to tune
-around.
+### Worker node (1GB)
 
-If the worker gets OOMKilled repeatedly, resize the Vultr instance. Raising
-`worker.concurrency` on this node will not help.
+The 1GB plan reports ~950Mi total RAM, but k3s-agent itself uses ~300Mi RSS.
+Without accounting for that, the scheduler would report the full amount as
+allocatable and could pack the worker pod tightly enough to starve the agent
+itself. The join in step 4b sets `system-reserved=memory=350Mi`, bringing
+allocatable down to a truthful **~600Mi**.
+
+| Component | Request | Limit |
+|---|---|---|
+| worker (headless Chromium) | 400Mi | 550Mi |
+
+That's most of the node's budget by design — it's a single-purpose box.
+Traefik's per-node `svclb` proxy pod also lands here (it tolerates all
+taints, by k3s design, so every node can advertise the LoadBalancer IP); it's
+a few MB and not worth budgeting around.
+
+Both nodes have a swapfile, so memory pressure degrades to slowness rather
+than a hard OOM — but Chromium on swap is genuinely slow, so treat sustained
+swapping as the signal to resize rather than something to tune around. If the
+worker gets OOMKilled repeatedly, resize `vultr-worker`. Raising
+`worker.concurrency` will not help; the bottleneck is per-browser memory, not
+queue throughput.
 
 ## One-time setup
 
-### 1. Provision the Vultr node
+### 1. Provision the Vultr nodes
 
-Via the Vultr console or `vultr-cli`, create a 1 vCPU / 2GB instance (the
-cheapest "Cloud Compute" plan). Ubuntu 24.04 LTS is a safe default OS choice.
-Note its public IP.
+Via the Vultr console or `vultr-cli`, create **two** instances in the same
+region:
 
-### 2. Point DNS at it
+- Control-plane node: 1 vCPU / 2GB (the cheapest "Cloud Compute" plan).
+- Worker node: 1 vCPU / 1GB (High Frequency or High Performance — a dollar or
+  two more than the base Cloud Compute tier, worth it for the faster core a
+  single-threaded Chromium workload actually benefits from).
+
+Ubuntu 24.04+ LTS is a safe default OS choice for both. Note both public IPs.
+
+### 2. Point DNS at the control-plane node
 
 In Namecheap, add an A record for `openvisualregression.com` (and `www` if
-you want it) pointing at the node's public IP. Propagation is usually quick
-but can take up to a few hours.
+you want it) pointing at the **control-plane node's** public IP — that's the
+one running Traefik ingress. The worker node is never addressed directly, by
+anything. Propagation is usually quick but can take up to a few hours.
 
-### 3. Lock down the node with a Vultr firewall
+### 3. Lock down both nodes with Vultr firewalls
 
-Attach a Vultr Firewall Group to the instance before exposing anything. The
-k3s API (6443) must be reachable by your **local** cluster (that's where
-ArgoCD runs and connects from), but it should not be open to the whole
-internet — an exposed k3s API is a real attack surface.
+Use **two separate firewall groups**, one per node — the worker's role is
+narrow enough (no ingress, no public service) that it doesn't need the
+control-plane node's public-facing rules, and giving it those rules anyway
+would just be an unused, unnecessary hole to the internet.
 
-| Port | Source | Why |
-|---|---|---|
-| 22 (SSH) | your IP | admin |
-| 80 (HTTP) | anywhere | Let's Encrypt http-01 challenge + redirect |
-| 443 (HTTPS) | anywhere | the app |
-| 6443 (k8s API) | your local egress IP | ArgoCD → this cluster |
+**Control-plane node's group:**
+
+| Port | Protocol | Source | Why |
+|---|---|---|---|
+| 22 | tcp | your IP | admin |
+| 80 | tcp | anywhere | Let's Encrypt http-01 challenge + redirect |
+| 443 | tcp | anywhere | the app |
+| 6443 | tcp | your local egress IP | ArgoCD → this cluster |
+| 6443 | tcp | worker node's IP | worker → apiserver |
+| 8472 | udp | worker node's IP | flannel vxlan (pod networking) |
+| 10250 | tcp | worker node's IP | kubelet |
+
+**Worker node's group:**
+
+| Port | Protocol | Source | Why |
+|---|---|---|---|
+| 22 | tcp | your IP | admin |
+| 8472 | udp | control-plane node's IP | flannel vxlan (pod networking) |
+| 10250 | tcp | control-plane node's IP | kubelet |
+
+Nothing else needs to be open on the worker — no 6443 (it only calls out, and
+egress isn't firewalled), no 80/443 (it serves nothing).
 
 Your "local egress IP" is the public IP your home/office NATs out through —
 `curl -s ifconfig.me` from the ArgoCD machine. If it's dynamic, you'll have
@@ -103,22 +136,33 @@ tailnet IP (step 5) and never open 6443 publicly at all — if you do, use the
 tailnet IP wherever `<node-ip>` appears below and add it to `--tls-san` in
 step 4.
 
-Ubuntu images also ship with `ufw` enabled and only port 22 open, which
-blocks the same traffic at the host level. A cloud firewall rule alone is
-not enough — the symptom is `kubectl` hanging with `dial tcp <node-ip>:6443:
-i/o timeout` while the API server is demonstrably healthy on the node
-itself. Open the same ports there:
+**A Vultr cloud firewall group is enforced before traffic ever reaches either
+host.** Ubuntu images also ship `ufw` enabled with only port 22 open, which
+blocks the same traffic again at the host level — you need matching `ufw`
+rules on both boxes too, or the cloud firewall rules above won't be enough on
+their own. The symptom of missing either layer is a k3s agent stuck logging
+`Failed to validate connection to cluster: ... context deadline exceeded`
+forever, or `kubectl` hanging with `dial tcp <node-ip>:6443: i/o timeout`
+while the API server is demonstrably healthy on the node itself.
 
 ```sh
+# on the control-plane node
 ufw allow from <your-egress-ip> to any port 6443 proto tcp
 ufw allow 80/tcp
 ufw allow 443/tcp
+ufw allow from <worker-node-ip> to any port 6443 proto tcp
+ufw allow from <worker-node-ip> to any port 8472 proto udp
+ufw allow from <worker-node-ip> to any port 10250 proto tcp
+
+# on the worker node
+ufw allow from <control-plane-ip> to any port 8472 proto udp
+ufw allow from <control-plane-ip> to any port 10250 proto tcp
 ```
 
-`ufw`'s default `FORWARD DROP` policy does not break k3s pod networking —
-k3s inserts its own ACCEPT rules ahead of it.
+`ufw`'s default `FORWARD DROP` policy does not break k3s pod networking — k3s
+inserts its own ACCEPT rules ahead of it.
 
-### 4. Install k3s on the node
+### 4. Install k3s on the control-plane node
 
 ```sh
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--tls-san <node-ip> \
@@ -142,13 +186,73 @@ enabled by default — both are used here. Confirm it's up:
 sudo k3s kubectl get nodes
 ```
 
-### 5. Register the node with your local ArgoCD
+### 4b. Join the worker node
 
-Pull the node's kubeconfig and merge it locally:
+Grab the node token from the control-plane node, then use it to install k3s
+in **agent** mode on the worker node:
 
 ```sh
-ssh root@<node-ip> cat /etc/rancher/k3s/k3s.yaml > /tmp/vultr-k3s.yaml
-# Edit /tmp/vultr-k3s.yaml: replace the server URL (127.0.0.1) with https://<node-ip>:6443
+ssh root@<control-plane-ip> cat /var/lib/rancher/k3s/server/node-token
+```
+
+Before installing, write `/etc/rancher/k3s/config.yaml` on the worker node so
+it registers with the right label, taint, and memory accounting from the
+start:
+
+```yaml
+node-label:
+  - "ovr.io/role=worker"
+node-taint:
+  - "ovr.io/dedicated=worker:NoSchedule"
+kubelet-arg:
+  - "system-reserved=cpu=100m,memory=350Mi"
+```
+
+Then join it:
+
+```sh
+curl -sfL https://get.k3s.io | \
+  K3S_URL=https://<control-plane-ip>:6443 \
+  K3S_TOKEN=<token from above> \
+  K3S_NODE_NAME=vultr-worker \
+  sh -
+```
+
+Confirm both nodes show up (from the control-plane node, or via the merged
+kubeconfig in step 5):
+
+```sh
+kubectl get nodes -o wide
+```
+
+**Important caveat on the taint:** `--node-taint` (like `--register-with-taints`
+in upstream kubelet) is only applied the *first* time a node registers — if
+you add `node-taint` to `config.yaml` after a node has already joined once,
+restarting `k3s-agent` will not retroactively apply it. `--node-label`
+doesn't have this limitation; k3s reconciles it on every agent start. If
+you're adding the taint to an already-registered node, apply it once by hand
+instead:
+
+```sh
+kubectl taint nodes vultr-worker ovr.io/dedicated=worker:NoSchedule
+```
+
+Once applied this way it persists across agent restarts exactly like a
+first-registration taint would — the caveat only matters for how you *get*
+it applied, not for whether it holds afterward. Keeping the entry in
+`config.yaml` regardless is still worth it: it's what makes a from-scratch
+rejoin (e.g. after wiping the node) come back correctly tainted with no
+manual step.
+
+### 5. Register the cluster with your local ArgoCD
+
+Pull the control-plane node's kubeconfig and merge it locally — you only
+register the cluster once; the worker node is invisible to ArgoCD, it's just
+another node inside the one cluster:
+
+```sh
+ssh root@<control-plane-ip> cat /etc/rancher/k3s/k3s.yaml > /tmp/vultr-k3s.yaml
+# Edit /tmp/vultr-k3s.yaml: replace the server URL (127.0.0.1) with https://<control-plane-ip>:6443
 KUBECONFIG=~/.kube/config:/tmp/vultr-k3s.yaml kubectl config view --flatten > /tmp/merged.yaml
 mv /tmp/merged.yaml ~/.kube/config
 kubectl config rename-context default vultr
@@ -165,7 +269,7 @@ argocd cluster add vultr --name vultr
 
 Create a Neon project and database (e.g. `open_visual_regression`). Copy the
 **pooled** connection string (the host ends in `-pooler`) — it keeps the
-node's web + worker pods from exhausting Neon's direct-connection limit.
+web/worker pods from exhausting Neon's direct-connection limit.
 `sslmode=require` is already part of the string Neon gives you.
 
 Migrations are the exception: Drizzle's migrator uses prepared statements,
@@ -220,17 +324,22 @@ kubectl apply -f argocd/root.yaml
 ```
 
 ArgoCD takes it from here: cert-manager installs, the ClusterIssuer comes up,
-Valkey deploys, then the OVR chart (migration Job, then web/worker).
+Valkey deploys, then the OVR chart (migration Job, then web/worker). The
+worker Deployment's `nodeSelector`/`tolerations` (set in
+`helm/ovr/values-vultr.yaml`) send it to `vultr-worker`; web has no such
+constraint and schedules on the control-plane node by elimination (it's the
+only untainted one).
 
 ### 10. Verify
 
 ```sh
 argocd app list
-kubectl --context vultr -n ovr get pods
+kubectl --context vultr -n ovr get pods -o wide
 ```
 
-Once the migration Job completes and web/worker are Running, visit
-`https://openvisualregression.com`.
+Confirm `ovr-app-web` lands on the control-plane node and `ovr-app-worker`
+lands on `vultr-worker`. Once the migration Job completes and both are
+Running, visit `https://openvisualregression.com`.
 
 ## Picking up new app releases
 
@@ -244,22 +353,22 @@ kubectl --context vultr -n ovr rollout restart deployment/ovr-app-web deployment
 
 The chart deploys with `strategy.type: Recreate`, so this restart costs a
 few seconds of downtime rather than running old and new pods side by side —
-the right trade on a small instance with little memory to spare. If you're
-running with real headroom to spare, switch to `RollingUpdate` for zero
-downtime.
+the right trade on nodes with little memory to spare. If you're running with
+real headroom to spare, switch to `RollingUpdate` for zero downtime.
 
-This restart is a manual step by design — no image-watching automation runs on the
-node to keep the RAM budget clear. If you want new merges deployed
-automatically, look at Argo CD Image Updater (it would run alongside ArgoCD
-on your local cluster, not on the Vultr node, so it wouldn't compete for the
-node's RAM) rather than adding anything here.
+This restart is a manual step by design — no image-watching automation runs
+on either Vultr node to keep their RAM budgets clear. If you want new merges
+deployed automatically, look at Argo CD Image Updater (it would run
+alongside ArgoCD on your local cluster, not on either Vultr node, so it
+wouldn't compete for either node's RAM) rather than adding anything here.
 
 ## Repo layout
 
 - `data/` — Valkey, plain manifests, no Helm.
 - `helm/ovr/` — the OVR chart (web, worker, migration Job). See
   `helm/ovr/README.md` for chart-level details.
-- `helm/ovr/values-vultr.yaml` — the values overlay for this deployment.
+- `helm/ovr/values-vultr.yaml` — the values overlay for this deployment,
+  including the worker's node pinning.
 - `argocd/` — ArgoCD Application manifests (app-of-apps).
 - `cluster-issuer.yaml` — cert-manager ClusterIssuer for Let's Encrypt via
   Traefik's http01 solver.
