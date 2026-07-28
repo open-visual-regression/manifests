@@ -35,6 +35,10 @@ web:
   resources:
     requests: { cpu: 100m, memory: 160Mi }
     limits: { cpu: 500m, memory: 320Mi }
+  # The control-plane node has real headroom now that the worker is on its own
+  # node, so zero-downtime rollouts are worth it here. The worker stays on
+  # Recreate (chart default) — its node has no spare room for a second replica.
+  updateStrategy: RollingUpdate
   ingress:
     enabled: true
     className: traefik

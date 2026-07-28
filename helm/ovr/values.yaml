@@ -58,6 +58,8 @@ web:
   replicas: 1
   port: 3000
   resources: {}
+  # RollingUpdate needs 2x this component's requests free on its node during rollout.
+  updateStrategy: Recreate
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -87,6 +89,8 @@ worker:
   # before its timeout fires. Empty uses the app default (10).
   groupSize: ""
   resources: {}
+  # RollingUpdate needs 2x this component's requests free on its node during rollout.
+  updateStrategy: Recreate
   nodeSelector: {}
   tolerations: []
   affinity: {}

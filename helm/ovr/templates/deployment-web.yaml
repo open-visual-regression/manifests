@@ -9,8 +9,9 @@ metadata:
 spec:
   replicas: {{ .Values.web.replicas }}
   # Recreate avoids briefly needing 2x memory during a rollout - safer on small instances.
+  # Only safe to switch to RollingUpdate if this component has real headroom on its node.
   strategy:
-    type: Recreate
+    type: {{ .Values.web.updateStrategy | default "Recreate" }}
   selector:
     matchLabels:
       {{- include "ovr.selectorLabels" (dict "Release" .Release "Chart" .Chart "component" "web") | nindent 6 }}
