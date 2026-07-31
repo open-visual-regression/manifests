@@ -32,9 +32,14 @@ storage:
 # budget is tight" before raising anything.
 web:
   replicas: 1
+  # The old 500m CPU limit was tuned for the previous node; the node has
+  # 1800m allocatable now. Next.js SSR rendering is bursty (a brief CPU spike
+  # per request, then idle), and 500m was tight enough that those bursts kept
+  # getting throttled — measured at ~22% of periods. 1500m leaves ~300m of
+  # the node's own headroom for kubelet/traefik/CoreDNS.
   resources:
     requests: { cpu: 100m, memory: 160Mi }
-    limits: { cpu: 500m, memory: 320Mi }
+    limits: { cpu: 1500m, memory: 320Mi }
   # Both nodes have real headroom now, so zero-downtime rollouts are worth it
   # on both — see the matching updateStrategy under worker below.
   updateStrategy: RollingUpdate
