@@ -29,7 +29,7 @@ spec:
             requests: { cpu: 10m, memory: 24Mi }
             limits: { cpu: 100m, memory: 96Mi }
   destination:
-    name: vultr
+    name: prod
     namespace: cert-manager
   syncPolicy:
     automated:

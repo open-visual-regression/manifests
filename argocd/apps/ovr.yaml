@@ -13,9 +13,9 @@ spec:
     path: helm/ovr
     helm:
       valueFiles:
-        - values-vultr.yaml
+        - values-prod.yaml
   destination:
-    name: vultr
+    name: prod
     namespace: ovr
   syncPolicy:
     automated:

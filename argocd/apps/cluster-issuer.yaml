@@ -15,7 +15,7 @@ spec:
       recurse: false
       include: "cluster-issuer.yaml"
   destination:
-    name: vultr
+    name: prod
     namespace: cert-manager
   syncPolicy:
     automated:

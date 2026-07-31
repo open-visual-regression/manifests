@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Creates the "ovr-secrets" Secret that helm/ovr (via existingSecret) reads.
-# Run once against the Vultr cluster. Nothing produced here is written to
+# Run once against the prod cluster. Nothing produced here is written to
 # this repo.
 #
 # Required env vars:
@@ -11,7 +11,7 @@
 # BETTER_AUTH_SECRET and OVR_GIT_TOKEN_ENCRYPTION_KEY are generated for you.
 #
 # Usage:
-#   kubectl config use-context <your-vultr-context>
+#   kubectl config use-context <your-prod-context>
 #   DATABASE_URL=... AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
 #     ./scripts/create-secrets.sh
 
