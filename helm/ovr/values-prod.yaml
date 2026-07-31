@@ -67,11 +67,14 @@ worker:
   # rollout fits comfortably — BullMQ's per-job locking means the two workers
   # sharing the queue mid-rollout is safe, not a double-processing risk.
   updateStrategy: RollingUpdate
-  # The node reserves 350Mi for k3s itself, leaving ~3.4Gi allocatable. Still
-  # conservative relative to what's actually available now.
+  # The node reserves 350Mi for k3s itself, leaving ~3.4Gi/1900m allocatable.
+  # The old 850m CPU limit was tuned for a node with ~900m allocatable total —
+  # it was capping the worker below what even the old node's replacement
+  # offered. 1700m leaves ~200m of the node's own headroom for kubelet/traefik
+  # on top of the 100m already reserved via system-reserved.
   resources:
     requests: { cpu: 300m, memory: 400Mi }
-    limits: { cpu: 850m, memory: 550Mi }
+    limits: { cpu: 1700m, memory: 1500Mi }
   # Counts against the container's memory limit, so keep it modest.
   shmSize: 256Mi
 
