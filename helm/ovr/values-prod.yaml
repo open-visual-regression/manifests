@@ -82,6 +82,10 @@ worker:
     limits: { cpu: 1700m, memory: 1500Mi }
   # Counts against the container's memory limit, so keep it modest.
   shmSize: 256Mi
+  # groupSize 4 at up to 2 minutes each caps a stuck group at ~8 minutes; give
+  # a rollout enough grace to drain the current snapshot instead of SIGKILLing
+  # the pod mid-capture.
+  terminationGracePeriodSeconds: 180
 
 migrate:
   enabled: true
