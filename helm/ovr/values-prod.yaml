@@ -55,8 +55,12 @@ web:
 
 worker:
   replicas: 1
-  # Headless Chromium is the biggest memory consumer here; keep concurrency low.
-  concurrency: 1
+  # Each concurrent group boots its own headless Chromium (~275Mi resident), so
+  # this is the main lever on the worker's memory ceiling. At 2 the pod peaks
+  # around 900Mi against the 2Gi limit below. CPU, not memory, is what caps this
+  # on a 2-vCPU node: a single group averages ~715m during a build, so 2 fits
+  # under the 1700m limit but a third would saturate the node.
+  concurrency: 2
   # Snapshots per group, at 2 minutes each: caps a stuck group at ~8 minutes.
   groupSize: 4
   # Pinned to the dedicated worker node, whose taint keeps everything else off
@@ -79,7 +83,7 @@ worker:
   # on top of the 100m already reserved via system-reserved.
   resources:
     requests: { cpu: 300m, memory: 400Mi }
-    limits: { cpu: 1700m, memory: 1500Mi }
+    limits: { cpu: 1700m, memory: 2Gi }
   # Counts against the container's memory limit, so keep it modest.
   shmSize: 256Mi
 

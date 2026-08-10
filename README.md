@@ -65,7 +65,7 @@ the headroom here easily covers it.
 
 | Component | Request | Limit |
 |---|---|---|
-| worker (headless Chromium) | 400Mi | 550Mi |
+| worker (headless Chromium) | 400Mi | 2Gi |
 
 Real headroom here now, which is why both `web` and `worker` run
 `updateStrategy: RollingUpdate` (`helm/ovr/values-prod.yaml`) — a brief
@@ -76,9 +76,16 @@ capture queue mid-rollout safe, not a double-processing risk.
 Both nodes should have a swapfile, so memory pressure degrades to slowness
 rather than a hard OOM — but Chromium on swap is genuinely slow, so treat
 sustained swapping as the signal to resize rather than something to tune
-around. If the worker gets OOMKilled repeatedly, resize it. Raising
-`worker.concurrency` will not help; the bottleneck is per-browser memory, not
-queue throughput.
+around. If the worker gets OOMKilled repeatedly, resize it.
+
+`worker.concurrency` is how many capture groups run at once, each with its own
+Chromium. On a 2-vCPU node the ceiling is CPU, not memory: one group averages
+~715m during a build against a 1700m limit and 1900m allocatable, so 2 fit and
+a third would saturate the node. Capture is partly I/O-bound (artifact upload
+is ~20% of per-snapshot wall time), so a second group overlaps that dead time —
+but throughput scales sub-linearly, closer to 1.5x than 2x. Confirm against
+`kubectl get --raw /api/v1/nodes/worker/proxy/stats/summary` before raising it;
+CPU PSI `full` climbing off zero means the node is out of room.
 
 ## One-time setup
 
