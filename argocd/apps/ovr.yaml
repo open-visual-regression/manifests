@@ -7,13 +7,27 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 spec:
   project: default
-  source:
-    repoURL: https://github.com/open-visual-regression/manifests.git
-    targetRevision: main
-    path: helm/ovr
-    helm:
-      valueFiles:
-        - values-prod.yaml
+  # Multi-source: the chart is a released artifact in GHCR, and this repo
+  # supplies only the values overlay for this deployment. `helm.valueFiles`
+  # cannot reach across repositories on its own -- $values resolves to the
+  # root of the source below carrying `ref: values`.
+  #
+  # Requires Argo CD 2.6+ for multi-source, and the chart registry registered
+  # as an OCI-enabled Helm repo:
+  #   argocd repo add ghcr.io/open-visual-regression/charts \
+  #     --type helm --name ovr-charts --enable-oci
+  sources:
+    - repoURL: ghcr.io/open-visual-regression/charts
+      chart: ovr
+      # Pinned deliberately. Bump this to deploy a new release; there is no
+      # moving tag to drift underneath the cluster.
+      targetRevision: 0.2.0
+      helm:
+        valueFiles:
+          - $values/values-prod.yaml
+    - repoURL: https://github.com/open-visual-regression/manifests.git
+      targetRevision: main
+      ref: values
   destination:
     name: prod
     namespace: ovr

@@ -3,10 +3,14 @@
 # Created out-of-band by scripts/create-secrets.sh — never commit it.
 existingSecret: ovr-secrets
 
-image:
-  tag: main
-  # main is a moving tag; IfNotPresent would never repull it.
-  pullPolicy: Always
+# No image override. The chart's appVersion is the app version it was
+# published for, and image.tag defaults to it, so the chart version pinned in
+# argocd/apps/ovr.yaml decides what runs. Pinning tag: main here would put the
+# cluster back on a moving tag and make that pin meaningless.
+#
+# Note that argocd/apps/image-updater.yaml, while it exists, writes a digest
+# into web.image.override/worker.image.override and takes precedence over all
+# of this. See "The image-updater question" in the README.
 
 env:
   baseUrl: "https://openvisualregression.com"

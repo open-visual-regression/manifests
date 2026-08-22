@@ -27,9 +27,13 @@ only touches IPs and provider-specific console steps, not the manifests.
 - **Database**: Neon (managed Postgres), not in-cluster.
 - **Object storage**: AWS S3 (a real bucket + IAM user), not an in-cluster
   S3-compatible service.
-- **App images**: built by the app repo's CI on merge to `main`, published to
-  `ghcr.io/open-visual-regression/{web,worker}:main`. This repo only
-  references that tag — it doesn't build anything.
+- **App images**: built by the app repo's CI, published to
+  `ghcr.io/open-visual-regression/{web,worker}`. This repo builds nothing.
+- **The chart**: lives in the app repo at `charts/ovr` and is published as an
+  OCI artifact to `ghcr.io/open-visual-regression/charts`. This repo consumes
+  a pinned version of it and supplies only `values-prod.yaml`. It used to
+  vendor the chart under `helm/ovr`, which tied the chart's lifecycle to this
+  one deployment instead of to the app it deploys.
 
 `argocd/root.yaml` is an app-of-apps: apply it once, and it creates/syncs
 everything else in `argocd/apps/` (cert-manager → cluster-issuer → Valkey →
@@ -68,7 +72,7 @@ the headroom here easily covers it.
 | worker (headless Chromium) | 400Mi | 2Gi |
 
 Real headroom here now, which is why both `web` and `worker` run
-`updateStrategy: RollingUpdate` (`helm/ovr/values-prod.yaml`) — a brief
+`updateStrategy: RollingUpdate` (`values-prod.yaml`) — a brief
 old+new pod overlap during a rollout fits comfortably on either node.
 BullMQ's per-job locking also makes two worker pods briefly sharing the
 capture queue mid-rollout safe, not a double-processing risk.
@@ -339,7 +343,7 @@ connection string instead.
 ### 8. Create the S3 bucket + IAM user
 
 In AWS: create a bucket (e.g. `ovr`, region `us-east-1` — match whatever you
-pick in `helm/ovr/values-prod.yaml`'s `storage.bucket`/`storage.region`),
+pick in `values-prod.yaml`'s `storage.bucket`/`storage.region`),
 and an IAM user with a policy scoped to just that bucket:
 
 ```json
@@ -400,7 +404,7 @@ kubectl apply -f argocd/root.yaml
 ArgoCD takes it from here: cert-manager installs, the ClusterIssuer comes up,
 Valkey deploys, then the OVR chart (migration Job, then web/worker). The
 worker Deployment's `nodeSelector`/`tolerations` (set in
-`helm/ovr/values-prod.yaml`) send it to the tainted worker node; web has no
+`values-prod.yaml`) send it to the tainted worker node; web has no
 such constraint and schedules on the control-plane node by elimination (it's
 the only untainted one).
 
@@ -422,31 +426,51 @@ Running, visit `https://openvisualregression.com`.
 
 ## Picking up new app releases
 
-The chart tracks the `main` image tag with `pullPolicy: Always`
-(`helm/ovr/values-prod.yaml`), so a rollout restart — not just an ArgoCD
-sync — is what actually fetches a new build:
+The deployment installs a released chart, pinned by version in
+`argocd/apps/ovr.yaml`. The chart's `appVersion` is the app version it was
+published for, and the image tag defaults to that, so the chart version alone
+decides what runs — there is no moving tag to drift underneath the cluster,
+and no rollout restart needed to pick a build up.
 
-```sh
-kubectl --context prod -n ovr rollout restart deployment/ovr-app-web deployment/ovr-app-worker
+To deploy a new release, bump `targetRevision`:
+
+```yaml
+# argocd/apps/ovr.yaml
+targetRevision: 0.3.0
 ```
 
-Both `web` and `worker` run `updateStrategy: RollingUpdate` here, so this is
-zero-downtime on nodes with headroom to spare. If you're running on tighter
-nodes, switch one or both back to `Recreate` (the chart default) instead.
+ArgoCD syncs, the migration Job runs as a pre-upgrade hook, then both
+deployments roll. Both run `updateStrategy: RollingUpdate` here, so that's
+zero-downtime on nodes with headroom to spare. On tighter nodes, switch one or
+both back to `Recreate`.
 
-This restart is a manual step by design — no image-watching automation runs
-on either node to keep their RAM budgets clear. If you want new merges
-deployed automatically, look at Argo CD Image Updater (it would run
-alongside ArgoCD on your local cluster, not on either remote node, so it
-wouldn't compete for either node's RAM) rather than adding anything here.
+### The image-updater question
+
+`argocd/apps/image-updater.yaml` still tracks
+`ghcr.io/open-visual-regression/{web,worker}:main` and writes a digest into
+`web.image.override`/`worker.image.override`. That made sense when the chart
+itself tracked `main`. Against a pinned chart the two now disagree: the chart
+says run 0.3.0, image-updater says run whatever `main` built ten minutes ago,
+and the override wins.
+
+Worth picking one deliberately:
+
+- **Deploy releases.** Delete `argocd/apps/image-updater.yaml` and bump
+  `targetRevision` when you want a new version. Reproducible, and what a
+  versioned chart is for.
+- **Deploy every merge.** Keep image-updater, and accept that the running
+  images are ahead of the chart's `appVersion`. Check that it still writes
+  back correctly first — Argo CD Image Updater's support for multi-source
+  Applications is limited, and this Application is now multi-source.
+
+Neither file is changed here; the choice is still open.
 
 ## Repo layout
 
 - `data/` — Valkey, plain manifests, no Helm.
-- `helm/ovr/` — the OVR chart (web, worker, migration Job). See
-  `helm/ovr/README.md` for chart-level details.
-- `helm/ovr/values-prod.yaml` — the values overlay for this deployment,
-  including the worker's node pinning.
+- `values-prod.yaml` — the values overlay for this deployment, including the
+  worker's node pinning. The chart it applies to lives in the app repo under
+  `charts/ovr`; see that directory's README for chart-level detail.
 - `argocd/` — ArgoCD Application manifests (app-of-apps).
 - `cluster-issuer.yaml` — cert-manager ClusterIssuer for Let's Encrypt via
   Traefik's http01 solver.

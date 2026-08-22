@@ -1,0 +1,48 @@
+name: Manifests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manifests-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  render:
+    name: Render the prod overlay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Parse every manifest
+        run: |
+          # find, not a glob: bash globstar skips dotted directories, which
+          # would quietly exclude .github/workflows from "every manifest".
+          find . -path ./.git -prune -o \( -name '*.yaml' -o -name '*.yml' \) -print \
+            | sort | while read -r f; do
+                python3 -c "import sys,yaml; list(yaml.safe_load_all(open(sys.argv[1])))" "$f"
+                echo "ok $f"
+              done
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      # The chart lives in the app repo now, so a renamed or retyped value
+      # would otherwise go unnoticed here until a sync deployed the wrong
+      # thing. The chart ships values.schema.json, so this fails on an unknown
+      # key rather than silently ignoring it.
+      - name: Render values-prod.yaml against the pinned chart
+        run: |
+          version=$(yq '.spec.sources[0].targetRevision' argocd/apps/ovr.yaml)
+          chart=$(yq '.spec.sources[0].repoURL + "/" + .spec.sources[0].chart' argocd/apps/ovr.yaml)
+          echo "rendering oci://$chart --version $version"
+          helm template ovr-app "oci://$chart" --version "$version" \
+            --values values-prod.yaml > rendered.yaml
+          echo "rendered $(grep -c '^kind:' rendered.yaml) objects"
