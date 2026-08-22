@@ -4,6 +4,10 @@ Deploys the OVR web app and worker to Kubernetes. Requires a Postgres database,
 a Redis-compatible instance, and an S3-compatible bucket already running
 somewhere reachable from the cluster — this chart does not provision them.
 
+Published as an OCI chart on every change on `main`, at
+`oci://ghcr.io/open-visual-regression/charts/ovr`. Pulling without `--version`
+resolves to the highest published SemVer.
+
 ## 1. Set required values
 
 Copy `values.yaml`, or pass `--set`, filling in:

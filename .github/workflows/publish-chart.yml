@@ -1,0 +1,40 @@
+name: Publish Helm chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "helm/ovr/**"
+
+concurrency:
+  group: publish-helm-chart
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Package and push
+        run: |
+          version=$(grep '^version:' helm/ovr/Chart.yaml | awk '{print $2}')
+          repo_owner_lower=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+
+          if helm show chart "oci://ghcr.io/${repo_owner_lower}/charts/ovr" --version "$version" >/dev/null 2>&1; then
+            echo "ovr-${version} is already published, nothing to do"
+            exit 0
+          fi
+
+          helm package helm/ovr
+          helm push "ovr-${version}.tgz" "oci://ghcr.io/${repo_owner_lower}/charts"
