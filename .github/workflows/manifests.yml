@@ -22,6 +22,7 @@ jobs:
 
       - name: Parse every manifest
         run: |
+          set -euo pipefail
           # find, not a glob: bash globstar skips dotted directories, which
           # would quietly exclude .github/workflows from "every manifest".
           find . -path ./.git -prune -o \( -name '*.yaml' -o -name '*.yml' \) -print \
